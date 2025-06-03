@@ -1,6 +1,6 @@
 const mongoose = require('mongoose')
 
-const logSchema = new mongoose.Schema(
+const successLogSchema = new mongoose.Schema(
   {
     user: { type: String, required: true },
     user_id: { type: String, required: true },
@@ -9,14 +9,14 @@ const logSchema = new mongoose.Schema(
   },
   { timestamps: true }
 )
-const Log = mongoose.models.Log || mongoose.model('Log', logSchema, 'logs')
+
+const successLog = mongoose.models.successLog || mongoose.model('successLog', successLogSchema, 'success-logs')
 
 let isConnected = false
 
 async function connectToDatabase(mongoUri: string) {
-  if (isConnected) return
+  if (mongoose.connection.readyState === 1) return // 1 = connected
   await mongoose.connect(mongoUri, { maxPoolSize: 1, serverSelectionTimeoutMS: 5000 })
-  isConnected = true
 }
 
 exports.handler = async (event, context) => {
@@ -70,7 +70,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    const saved = await Log.create({ user, user_id, path, timestamp })
+    const saved = await successLog.create({ user, user_id, path, timestamp })
     return { statusCode: 201, headers: corsHeaders, body: JSON.stringify(saved) }
   } catch (saveErr) {
     console.error('Error saving log entry:', saveErr)
