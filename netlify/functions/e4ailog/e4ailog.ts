@@ -1,30 +1,44 @@
 // netlify/functions/log-event.js
-import mongoose from 'mongoose'
+const mongoose = require('mongoose')
 
-export const handler = async (event, context) => {
-  // Allow reusing the mongoose connection across invocations
+exports.handler = async (event, context) => {
+  // 1) Let Netlify reuse the Mongoose connection across invocations
   context.callbackWaitsForEmptyEventLoop = false
 
-  // Only accept POST
+  // 2) Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',                // or your specific origin
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: '',
+    }
+  }
+
+  // 3) Reject any method other than POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ error: 'Method Not Allowed' }),
     }
   }
 
-  // Parse JSON body
+  // 4) Parse JSON body
   let data
   try {
     data = JSON.parse(event.body)
   } catch {
     return {
       statusCode: 400,
+      headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ error: 'Invalid JSON payload' }),
     }
   }
 
-  // Basic validation
   const { user, user_id, path, timestamp } = data
   if (
     typeof user !== 'string' ||
@@ -34,6 +48,7 @@ export const handler = async (event, context) => {
   ) {
     return {
       statusCode: 400,
+      headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         error:
           'Fields "user", "user_id", "path", and "timestamp" must be strings.',
@@ -41,11 +56,12 @@ export const handler = async (event, context) => {
     }
   }
 
-  // Connect to MongoDB (URI stored in Netlify site’s ENV var MONGO_URI)
+  // 5) Connect to MongoDB
   const mongoUri = process.env.MONGO_URI
   if (!mongoUri) {
     return {
       statusCode: 500,
+      headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ error: 'MONGO_URI is not defined.' }),
     }
   }
@@ -57,12 +73,13 @@ export const handler = async (event, context) => {
       console.error('MongoDB connection error:', connErr)
       return {
         statusCode: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ error: 'Database connection failed.' }),
       }
     }
   }
 
-  // Define schema & model (or reuse if already defined)
+  // 6) Define schema/model (or reuse if already exists)
   const logSchema = new mongoose.Schema(
     {
       user: { type: String, required: true },
@@ -74,20 +91,20 @@ export const handler = async (event, context) => {
   )
   const Log = mongoose.models.Log || mongoose.model('Log', logSchema)
 
-  // Create new log document
-  let saved
+  // 7) Save document
   try {
-    saved = await Log.create({ user, user_id, path, timestamp })
+    const saved = await Log.create({ user, user_id, path, timestamp })
+    return {
+      statusCode: 201,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify(saved),
+    }
   } catch (saveErr) {
     console.error('Error saving log:', saveErr)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to save log entry.' }),
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ error: 'Failed to write log entry.' }),
     }
-  }
-
-  return {
-    statusCode: 201,
-    body: JSON.stringify(saved),
   }
 }
